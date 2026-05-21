@@ -361,14 +361,20 @@ function Get-HuduAppInfo {
     Param()
 
     [version]$script:HuduRequiredVersion = '2.21'
-    
+
     try {
-        Invoke-HuduRequest -Resource '/api/v1/api_info'
-    } catch {
-        [PSCustomObject]@{
-            version = '0.0.0.0'
-            date    = '2000-01-01'
+        $AppInfo = Invoke-HuduRequest -Resource '/api/v1/api_info'
+        if ($null -eq $AppInfo) {
+            throw 'Hudu api_info returned null response.'
         }
+        if ($null -eq $AppInfo.version -or [string]::IsNullOrWhiteSpace([string]$AppInfo.version)) {
+            throw ("Hudu api_info response missing version. Raw response: {0}" -f ($AppInfo | ConvertTo-Json -Compress -Depth 10))
+        }
+        return $AppInfo
+    } catch {
+        $ErrorMessage = $_.Exception.Message
+        Write-Error ("Get-HuduAppInfo failed while calling /api/v1/api_info: {0}" -f $ErrorMessage)
+        throw
     }
 }
 #EndRegion './Public/Get-HuduAppInfo.ps1' 27
@@ -1510,9 +1516,15 @@ function New-HuduAPIKey {
         Set-Variable -Name 'Int_HuduAPIKey' -Value $SecApiKey -Visibility Private -Scope script -Force
 
         if ($script:Int_HuduBaseURL) {
-            [version]$version = (Get-HuduAppInfo).version
-            if ($version -lt $script:HuduRequiredVersion) {
-                Write-Warning "A connection error occured or Hudu version is below $script:HuduRequiredVersion"
+            try {
+                $AppInfo = Get-HuduAppInfo
+                [version]$version = $AppInfo.version
+                if ($version -lt $script:HuduRequiredVersion) {
+                    Write-Warning "A connection error occured or Hudu version is below $script:HuduRequiredVersion"
+                }
+            } catch {
+                Write-Error ("Hudu API validation failed after setting API key: {0}" -f $_.Exception.Message)
+                throw
             }
         }
     }
@@ -1908,9 +1920,15 @@ function New-HuduBaseURL {
         Set-Variable -Name 'Int_HuduBaseURL' -Value $BaseURL -Visibility Private -Scope script -Force
 
         if ($script:Int_HuduAPIKey) {
-            [version]$Version = (Get-HuduAppInfo).version
-            if ($Version -lt $script:HuduRequiredVersion) {
-                Write-Warning "A connection error occured or Hudu version is below $script:HuduRequiredVersion"
+            try {
+                $AppInfo = Get-HuduAppInfo
+                [version]$Version = $AppInfo.version
+                if ($Version -lt $script:HuduRequiredVersion) {
+                    Write-Warning "A connection error occured or Hudu version is below $script:HuduRequiredVersion"
+                }
+            } catch {
+                Write-Error ("Hudu API validation failed after setting base URL: {0}" -f $_.Exception.Message)
+                throw
             }
         }
     }
