@@ -1,4 +1,4 @@
-﻿#Region './Private/ArgumentCompleters/AssetLayoutCompleter.ps1' -1
+#Region './Private/ArgumentCompleters/AssetLayoutCompleter.ps1' -1
 
 $AssetLayoutCompleter = {
     param (
@@ -363,13 +363,39 @@ function Get-HuduAppInfo {
     [version]$script:HuduRequiredVersion = '2.21'
 
     try {
-        $AppInfo = Invoke-HuduRequest -Resource '/api/v1/api_info'
+        $HuduAPIKey = Get-HuduApiKey
+        $HuduBaseURL = Get-HuduBaseURL
+
+        $Headers = @{
+            'x-api-key' = (New-Object PSCredential 'user', $HuduAPIKey).GetNetworkCredential().Password;
+        }
+
+        if (($Script:Int_HuduCustomHeaders | Measure-Object).count -gt 0){
+            foreach($Entry in $Int_HuduCustomHeaders.GetEnumerator()) {
+                $Headers[$Entry.Name] = $Entry.Value
+            }
+        }
+
+        $Uri = '{0}{1}' -f $HuduBaseURL, '/api/v1/api_info'
+        Write-Verbose ( 'GET [{0}]' -f $Uri )
+
+        $Response = Invoke-WebRequest -Uri $Uri -Headers $Headers -Method GET -ContentType 'application/json; charset=utf-8'
+        Write-Information ("Hudu api_info status: {0}" -f $Response.StatusCode)
+        Write-Information ("Hudu api_info content length: {0}" -f $(if ($null -ne $Response.Content) { $Response.Content.Length } else { 0 }))
+        Write-Information ("Hudu api_info raw body: {0}" -f $Response.Content)
+
+        if ([string]::IsNullOrWhiteSpace($Response.Content)) {
+            throw 'Hudu api_info returned empty body.'
+        }
+
+        $AppInfo = $Response.Content | ConvertFrom-Json
         if ($null -eq $AppInfo) {
             throw 'Hudu api_info returned null response.'
         }
         if ($null -eq $AppInfo.version -or [string]::IsNullOrWhiteSpace([string]$AppInfo.version)) {
-            throw ("Hudu api_info response missing version. Raw response: {0}" -f ($AppInfo | ConvertTo-Json -Compress -Depth 10))
+            throw ("Hudu api_info response missing version. Raw response: {0}" -f $Response.Content)
         }
+
         return $AppInfo
     } catch {
         $ErrorMessage = $_.Exception.Message
